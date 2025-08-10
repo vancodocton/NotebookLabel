@@ -1,0 +1,47 @@
+name: .NET CI
+
+on:
+  workflow_call:
+    inputs:
+      Solution:
+        type: string
+        required: false
+        description: The solution file to build and test
+        default: ""
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          cache: true
+          cache-dependency-path: |
+            Directory.Packages.props
+            **/packages.lock.json
+            **/dotnet-tools.json
+      - name: Restore .NET tools
+        run: dotnet tool restore
+      - name: Restore
+        run: dotnet restore ${{ inputs.Solution }}
+      - name: Build
+        run: dotnet build ${{ inputs.Solution }} --no-restore --configuration Release
+      - name: Verify Format
+        run: dotnet format ${{ inputs.Solution }} --no-restore --verify-no-changes -v diag --severity info
+      - name: Test
+        shell: pwsh
+        run: |
+          dotnet test ${{ inputs.Solution }} --no-build --configuration Release --verbosity normal -- --coverage --coverage-settings $pwd/coverage.config --coverage-output-format xml --report-xunit
+          dotnet coverage merge **/TestResults/**.xml --output coverage.xml --output-format xml
+      - name: Upload TestResults Artifacts
+        uses: actions/upload-artifact@v4
+        if: success() || failure()
+        with:
+          name: ${{ runner.os }}-TestResults
+          path: |
+            **/TestResults/**
+            coverage.xml
